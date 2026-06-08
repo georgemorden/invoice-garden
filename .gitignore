@@ -1,0 +1,42 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# OS and editor noise
+.DS_Store
+.vscode/
+.idea/
+
+# Local environment/secrets
+.env
+.env.*
+!.env.example
+
+# Personal/local working files
+*.command
+*.applescript
+*.app/
+local-data/
+imports/
+exports/
+invoices/
+screenshots/
+docs/
+private/
+tmp/
+
+# Downloaded or generated billing data
+Clockify_Time_Report_*
+Clockify_*
+invoice-*.pdf
+invoice-*.csv
+*.csv
+*.xls
+*.xlsx
+*.pdf
+
+# Local captures and recordings
+Screenshot*.png
+Screenshot*.jpg
+Screenshot*.jpeg
+Screen Recording*.mov
