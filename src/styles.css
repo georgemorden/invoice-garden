@@ -582,7 +582,7 @@ button:not(.step-tab):focus-visible {
 }
 
 .step-pane {
-  min-height: 0;
+  min-height: 280px;
   padding-top: 2px;
   touch-action: pan-y;
 }
@@ -610,59 +610,47 @@ button:not(.step-tab):focus-visible {
   transition: none;
 }
 
+@property --plant-progress {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --plant-detail {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
 .completion-progress {
-  --completion-tree: #6a8f78;
-  --completion-tree-strong: #3f6c57;
-  --completion-tree-soft: rgba(102, 142, 121, 0.13);
-  --completion-pot: #eee8dd;
-  --completion-pot-edge: #cfc5b4;
+  --completion-tree: #879873;
+  --completion-tree-strong: #526951;
+  --completion-tree-soft: #b6bfa0;
+  --completion-pot: #e7d4bf;
+  --completion-pot-edge: #a68d78;
   --completion-pot-shadow: rgba(69, 63, 54, 0.105);
-  margin-top: 22px;
-  margin-bottom: clamp(8px, 2vh, 18px);
-  min-height: clamp(330px, 42vh, 500px);
-  padding: 0 12px;
-  position: relative;
-  display: grid;
-  align-items: end;
-  animation: itemRise 460ms var(--ease-spring) 90ms both;
+  margin-top: 18px;
+  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
 .completion-visual {
-  position: relative;
-  z-index: 1;
   width: 100%;
-  min-height: clamp(330px, 42vh, 500px);
   display: grid;
-  place-items: end center;
-  overflow: visible;
-}
-
-.completion-visual::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: clamp(12px, 3.2vh, 34px);
-  width: min(66%, 360px);
-  height: 78px;
-  transform: translateX(-50%);
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse at 50% 76%, rgba(86, 113, 94, 0.11) 0 18%, transparent 58%),
-    radial-gradient(circle at 35% 62%, rgba(113, 143, 118, 0.1) 0 2px, transparent 3px),
-    radial-gradient(circle at 56% 70%, rgba(113, 143, 118, 0.085) 0 1.5px, transparent 3px),
-    radial-gradient(circle at 69% 58%, rgba(113, 143, 118, 0.075) 0 1.5px, transparent 3px);
-  opacity: 0.72;
-  filter: blur(0.2px);
+  place-items: center;
 }
 
 .botanical-plant-progress {
-  position: relative;
-  width: min(100%, 260px);
-  height: clamp(240px, 36vh, 380px);
-  max-height: 100%;
-  display: grid;
-  place-items: center;
-  transform: translateY(var(--plant-ground-lift, -8px));
+  width: min(100%, 360px);
+  height: clamp(220px, 38vh, 420px);
+  --plant-sway: calc(1.2deg + (1 - var(--plant-progress)) * 1.8deg);
+  transition:
+    --plant-progress 680ms cubic-bezier(0.16, 1, 0.3, 1),
+    --plant-detail 580ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .botanical-plant-progress__svg {
@@ -674,18 +662,29 @@ button:not(.step-tab):focus-visible {
 }
 
 .botanical-plant__growth {
-  transform-box: fill-box;
-  transform-origin: 50% 88%;
-  animation: botanicalPlantSway 4700ms ease-in-out infinite alternate;
-  will-change: transform;
+  transform-box: view-box;
+  transform-origin: 120px 295px;
+  animation: botanical-breeze 5600ms ease-in-out -2400ms infinite alternate;
+}
+
+.botanical-plant__leaf-breeze {
+  transform-box: view-box;
+  transform-origin: 0px 0px;
+  animation: botanical-leaf-breeze 6100ms ease-in-out var(--leaf-phase, 0s) infinite alternate;
+}
+
+.botanical-plant-progress[data-in-view="false"] .botanical-plant__growth,
+.botanical-plant-progress[data-in-view="false"] .botanical-plant__leaf-breeze,
+.botanical-plant-progress[data-page-visible="false"] .botanical-plant__growth,
+.botanical-plant-progress[data-page-visible="false"] .botanical-plant__leaf-breeze {
+  animation-play-state: paused;
 }
 
 .botanical-plant__stem,
 .botanical-plant__leaf-stem,
 .botanical-plant__leaf-vein,
-.botanical-plant__bud-stem,
 .botanical-plant__pot-highlight,
-.botanical-plant__seedling-stem {
+.botanical-plant__pot-contour {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -693,123 +692,115 @@ button:not(.step-tab):focus-visible {
 }
 
 .botanical-plant__stem--active {
-  stroke: var(--completion-tree);
-  stroke-width: 1.7;
-  filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--completion-tree-strong) 8%, transparent));
-  transition:
-    stroke-dashoffset 620ms var(--ease-spring),
-    opacity 180ms var(--ease-smooth);
+  stroke: var(--completion-tree-strong);
+  stroke-width: 1.6;
+  /* Dash distances must scale with the SVG path so the crown caps its reveal. */
+  vector-effect: none;
+  stroke-dasharray: var(--stem-length);
+  stroke-dashoffset: calc((1 - var(--plant-progress)) * 0.9 * var(--stem-length));
 }
 
-.botanical-plant__leaf,
-.botanical-plant__bud {
-  opacity: 0;
-  transition: opacity 420ms var(--ease-smooth) var(--plant-delay, 0ms);
+.botanical-plant__leaf {
+  --leaf-open: clamp(0, calc((var(--plant-progress) - var(--leaf-at)) * 9), 1);
+  opacity: var(--leaf-open);
 }
 
-.botanical-plant__leaf.is-visible,
-.botanical-plant__bud.is-visible {
-  opacity: 1;
+.botanical-plant__leaf--detail {
+  --leaf-open: min(
+    clamp(0, calc((var(--plant-progress) - var(--leaf-at)) * 9), 1),
+    clamp(0, calc((var(--plant-detail) - var(--detail-at)) * 17), 1)
+  );
 }
 
 .botanical-plant__sprout {
-  transform-box: fill-box;
-  transform-origin: 4% 88%;
-  transform: translateY(3px) scale(0.74);
-  transition: transform 520ms cubic-bezier(0.22, 0.72, 0.18, 1) var(--plant-delay, 0ms);
+  transform-box: view-box;
+  transform-origin: 0px 0px;
+  transform: scale(clamp(0.15, var(--leaf-open), 1));
 }
 
-.botanical-plant__leaf.is-visible .botanical-plant__sprout,
-.botanical-plant__bud.is-visible .botanical-plant__sprout {
-  transform: translateY(0) scale(1);
-}
-
-.botanical-plant__leaf-stem,
-.botanical-plant__bud-stem {
-  stroke: color-mix(in srgb, var(--completion-tree-strong) 70%, rgba(255, 255, 255, 0.3));
-  stroke-width: 0.85;
-  opacity: 0.7;
+.botanical-plant__leaf-stem {
+  stroke: var(--completion-tree-strong);
+  stroke-width: 0.7;
 }
 
 .botanical-plant__leaf-blade {
-  fill: color-mix(in srgb, var(--completion-tree) 38%, rgba(255, 255, 255, 0.54));
-  stroke: color-mix(in srgb, var(--completion-tree-strong) 78%, rgba(255, 255, 255, 0.26));
-  stroke-width: 1;
+  fill: var(--completion-tree);
+  stroke: var(--completion-tree-strong);
+  stroke-width: 0.7;
   vector-effect: non-scaling-stroke;
-  transform-box: fill-box;
-  transform-origin: 14% 56%;
-  animation: botanicalLeafBreath 4300ms ease-in-out infinite alternate;
+}
+
+.botanical-plant__leaf--soft .botanical-plant__leaf-blade {
+  fill: var(--completion-tree-soft);
 }
 
 .botanical-plant__leaf-vein {
-  stroke: color-mix(in srgb, var(--completion-tree-strong) 62%, rgba(255, 255, 255, 0.42));
+  stroke: #e2e6cf;
   stroke-width: 0.55;
-  opacity: 0.52;
 }
 
-.botanical-plant__bud-dot {
-  fill: color-mix(in srgb, var(--completion-tree) 48%, rgba(255, 255, 255, 0.42));
-  stroke: color-mix(in srgb, var(--completion-tree-strong) 62%, rgba(255, 255, 255, 0.28));
-  stroke-width: 0.9;
-  opacity: 0.84;
-  vector-effect: non-scaling-stroke;
+.botanical-plant__crown {
+  offset-distance: calc((0.1 + var(--plant-progress) * 0.9) * 100%);
+  offset-rotate: 0deg;
+  offset-anchor: 0px 0px;
+}
+
+.botanical-plant__crown-leaves {
+  transform-origin: 0px 0px;
+  transform: scale(calc(0.5 + var(--plant-progress) * 0.22));
 }
 
 .botanical-plant__shadow {
   fill: var(--completion-pot-shadow);
-  opacity: 0.72;
 }
 
-.botanical-plant__pot-body {
+.botanical-plant__pot-body,
+.botanical-plant__pot-front {
   fill: var(--completion-pot);
   stroke: var(--completion-pot-edge);
-  stroke-width: 0.95;
+  stroke-width: 0.9;
   vector-effect: non-scaling-stroke;
 }
 
 .botanical-plant__pot-rim {
-  fill: color-mix(in srgb, var(--completion-pot) 82%, #ffffff);
-  stroke: color-mix(in srgb, var(--completion-pot-edge) 88%, rgba(255, 255, 255, 0.45));
-  stroke-width: 0.95;
+  fill: #f1e4d2;
+  stroke: var(--completion-pot-edge);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.botanical-plant__soil {
+  fill: #8e816c;
+  opacity: 0.6;
+}
+
+.botanical-plant__pot-lip {
+  fill: #ecddc8;
+  stroke: var(--completion-pot-edge);
+  stroke-width: 0.75;
   vector-effect: non-scaling-stroke;
 }
 
 .botanical-plant__pot-highlight {
-  stroke: rgba(255, 255, 255, 0.68);
-  stroke-width: 1.3;
-  opacity: 0.62;
+  stroke: #fcf2df;
+  stroke-width: 1.5;
 }
 
-.botanical-plant__seedling {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: botanicalPlantSway 4500ms ease-in-out infinite alternate;
-  opacity: 1;
-  transition: opacity 220ms var(--ease-smooth);
+.botanical-plant__pot-contour {
+  stroke: #b39b84;
+  stroke-width: 0.7;
+  opacity: 0.6;
 }
 
-.botanical-plant__seedling.is-hidden {
-  opacity: 0;
+@keyframes botanical-breeze {
+  0% { transform: rotate(calc(var(--plant-sway) * -0.85)); }
+  55% { transform: rotate(calc(var(--plant-sway) * 0.12)); }
+  100% { transform: rotate(var(--plant-sway)); }
 }
 
-.botanical-plant__seedling-stem {
-  stroke: color-mix(in srgb, var(--completion-tree-strong) 58%, rgba(255, 255, 255, 0.34));
-  stroke-width: 1.1;
-  opacity: 0.74;
-}
-
-.botanical-plant__seedling-leaf {
-  fill: color-mix(in srgb, var(--completion-tree) 28%, rgba(255, 255, 255, 0.56));
-  stroke: color-mix(in srgb, var(--completion-tree-strong) 62%, rgba(255, 255, 255, 0.36));
-  stroke-width: 0.9;
-  vector-effect: non-scaling-stroke;
-  transform-box: fill-box;
-  transform-origin: 12% 60%;
-  animation: botanicalLeafBreath 4100ms ease-in-out infinite alternate;
-}
-
-.botanical-plant__seedling-leaf--left {
-  animation-delay: 420ms;
+@keyframes botanical-leaf-breeze {
+  from { transform: rotate(-1.6deg); }
+  to { transform: rotate(2.1deg); }
 }
 
 .step-pane > .section > *:nth-child(1) {
@@ -942,7 +933,8 @@ select {
 
 input::placeholder,
 textarea::placeholder {
-  color: color-mix(in srgb, var(--text-muted) 60%, transparent);
+  color: var(--text-muted);
+  opacity: 1;
 }
 
 textarea {
@@ -1266,7 +1258,7 @@ select.invalid:focus {
 }
 
 .field-grid.five-col.split-hours-grid {
-  grid-template-columns: repeat(auto-fit, minmax(106px, 1fr));
+  grid-template-columns: repeat(var(--week-count, 5), minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1298,39 +1290,29 @@ select.invalid:focus {
   animation-delay: 195ms;
 }
 
-.clockify-import-row {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
+.clockify-import-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--week-count, 5), minmax(0, 1fr));
   gap: 10px;
-  width: fit-content;
-  max-width: 100%;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.44);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(250, 245, 250, 0.22)),
-    color-mix(in srgb, var(--accent-soft) 14%, transparent);
-  padding: 6px 7px 6px 10px;
-  margin-bottom: 0;
-  transition:
-    background-color var(--motion-medium),
-    border-color var(--motion-medium),
-    box-shadow var(--motion-medium),
-    transform var(--motion-medium);
+  padding-top: 20px;
 }
 
-.clockify-import-row:hover {
-  border-color: rgba(255, 255, 255, 0.62);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.54), rgba(250, 245, 250, 0.28)),
-    color-mix(in srgb, var(--accent-soft) 18%, transparent);
-  box-shadow: 0 8px 20px rgba(47, 54, 83, 0.035);
-  transform: translateY(-1px);
+.clockify-import-row {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
 }
 
 .clockify-import-copy {
   display: flex;
   align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--control-bg);
   min-width: 0;
 }
 
@@ -1338,11 +1320,14 @@ select.invalid:focus {
   display: block;
   width: auto;
   height: 24px;
-  max-width: 150px;
+  max-width: 85%;
 }
 
 .import-button {
-  min-width: 104px;
+  min-width: 0;
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 8px;
   white-space: nowrap;
 }
 
@@ -1655,37 +1640,53 @@ button:disabled {
 
   .form-panel {
     height: 100%;
-    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto clamp(260px, 34vh, 360px) minmax(180px, 1fr);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 14px;
   }
 
   .step-pane {
-    flex: 0 1 clamp(190px, 28vh, 320px);
+    min-height: 0;
   }
 
   .completion-progress {
-    flex: 1 1 clamp(220px, 38vh, 500px);
+    height: 100%;
     min-height: 0;
-    margin-top: clamp(6px, 1.1vh, 14px);
+    margin-top: 0;
     margin-bottom: 0;
-    padding: 0 12px clamp(34px, 4vh, 52px);
+    justify-content: flex-end;
+    padding-bottom: clamp(20px, 3vh, 36px);
   }
 
   .completion-visual {
-    height: 100%;
+    flex: 1 1 0;
     min-height: 0;
+    position: relative;
+    align-self: stretch;
   }
 
   .botanical-plant-progress {
-    --plant-ground-lift: clamp(-92px, -11vh, -54px);
-    width: min(100%, 245px);
-    height: clamp(220px, 36vh, 310px);
-    max-height: 100%;
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    height: 100%;
+    max-height: 420px;
   }
 
   .preview-panel {
     position: static;
     padding: 14px;
+  }
+
+  .preview-action-dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding-top: 8px;
+    background: var(--surface-soft);
+    border-radius: 8px;
   }
 
   .section + .section {
@@ -1998,28 +1999,6 @@ button:disabled {
   }
 }
 
-@keyframes botanicalPlantSway {
-  0% {
-    transform: rotate(-0.72deg) translateX(-0.6px);
-  }
-  45% {
-    transform: rotate(0.46deg) translateX(0.42px);
-  }
-  100% {
-    transform: rotate(0.68deg) translateX(0.58px);
-  }
-}
-
-@keyframes botanicalLeafBreath {
-  0%,
-  100% {
-    transform: rotate(-0.85deg) scale(1);
-  }
-  50% {
-    transform: rotate(1.35deg) scale(1.022);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2033,21 +2012,13 @@ button:disabled {
     animation: none !important;
   }
 
-  .botanical-plant__growth,
-  .botanical-plant__stem--active,
-  .botanical-plant__leaf,
-  .botanical-plant__bud,
-  .botanical-plant__sprout,
-  .botanical-plant__seedling,
-  .botanical-plant__seedling-leaf {
-    animation: none !important;
+  .botanical-plant-progress {
     transition: none !important;
   }
 
   .botanical-plant__growth,
-  .botanical-plant__sprout,
-  .botanical-plant__seedling,
-  .botanical-plant__seedling-leaf {
+  .botanical-plant__leaf-breeze {
+    animation: none !important;
     transform: none !important;
   }
 }
@@ -2377,7 +2348,9 @@ button:disabled {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .field-grid.five-col {
+  .field-grid.five-col,
+  .field-grid.five-col.split-hours-grid,
+  .clockify-import-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -2406,6 +2379,10 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
+  :root {
+    --control-height: 44px;
+  }
+
   body {
     background-attachment:
       scroll,
@@ -2531,7 +2508,8 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .field-grid.five-col.split-hours-grid {
+  .field-grid.five-col.split-hours-grid,
+  .clockify-import-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px 10px;
   }
@@ -2553,10 +2531,13 @@ button:disabled {
     min-height: 44px;
   }
 
-  .clockify-import-row {
-    width: 100%;
-    justify-content: space-between;
-    padding: 7px 8px 7px 12px;
+  .step-pane {
+    min-height: 440px;
+  }
+
+  .clockify-import-copy,
+  .import-button {
+    height: 44px;
   }
 
   .month-picker-strip {
@@ -2575,11 +2556,6 @@ button:disabled {
     display: none;
   }
 
-  .import-button {
-    width: auto;
-    min-width: 108px;
-  }
-
   .preview-header {
     justify-content: center;
     text-align: center;
@@ -2588,6 +2564,15 @@ button:disabled {
   .invoice-paper {
     padding: 14px;
     border-radius: 8px;
+  }
+
+  .line-items th.numeric-col,
+  .line-items td.numeric-col {
+    padding-left: 8px;
+  }
+
+  .line-items td {
+    font-size: 12px;
   }
 
   .invoice-top {
@@ -2612,26 +2597,32 @@ button:disabled {
   }
 
   .step-tab {
-    font-size: 0;
-    gap: 0;
-    min-height: 38px;
-    padding: 8px 0;
+    min-height: 48px;
+    padding: 6px 2px;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 10px;
   }
 
   .step-tab svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
   }
+}
 
-  .step-tab span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
+input, textarea {
+  caret-color: var(--accent-strong);
+}
+
+input {
+  height: var(--control-height);
+}
+
+input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.step-pane > .section > .field-grid:first-child .field-label,
+.step-pane > .section > .month-picker-strip:first-child .field-label {
+  min-height: 28px;
 }
