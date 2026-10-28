@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState } from "react";
 import { parseClockifyDetailedCsv } from "./clockifyImport";
+import { CURRENCY_CONFIG, normalizeCurrency, readPresetRecords } from "./presetData";
 import BotanicalPlantProgress from "./components/BotanicalPlantProgress";
 import clockifyLogoUrl from "./assets/clockify.svg";
 import {
@@ -60,11 +61,6 @@ const REQUIRED_FIELDS = [
   "hourlyRate",
 ];
 
-const CURRENCY_CONFIG = {
-  GBP: { symbol: "£", locale: "en-GB" },
-  USD: { symbol: "$", locale: "en-US" },
-  EUR: { symbol: "€", locale: "de-DE" },
-};
 const CURRENCY_OPTIONS = [
   { value: "GBP", label: "GBP (£)" },
   { value: "USD", label: "USD ($)" },
@@ -111,25 +107,17 @@ const BUILT_IN_PRESETS = [
 ];
 const RESERVED_PRESET_IDS = new Set(BUILT_IN_PRESETS.map((preset) => preset.id));
 const GROWTH_REQUIRED_FIELDS = [
-  "invoiceMonth",
-  "periodStart",
-  "periodEnd",
   "businessName",
   "businessEmail",
   "clientName",
   "clientEmail",
-  "invoiceDate",
-  "currency",
   "hourlyRate",
 ];
-const GROWTH_OPTIONAL_FIELDS = [
-  "businessPhone",
-  "businessAddress",
-  "businessPostcode",
-  "clientPhone",
-  "clientAddress",
-  "clientPostcode",
+const GROWTH_DETAIL_FIELDS = [
+  "businessPhone", "businessAddress", "businessPostcode",
+  "clientPhone", "clientAddress", "clientPostcode", "invoiceNumber",
 ];
+const GROWTH_CONTROL_FIELDS = ["invoiceDate", "invoiceMonth", "periodStart", "periodEnd", "currency"];
 
 const WORKFLOW_FOCUS_SELECTOR = [
   'button:not(:disabled):not([data-key-nav-skip="true"])',
@@ -360,10 +348,6 @@ function limitFormValue(field, value) {
   return limitTextValue(field, value);
 }
 
-function normalizeCurrency(currency) {
-  return CURRENCY_CONFIG[currency] ? currency : "GBP";
-}
-
 function formatHours(value) {
   return Number(value).toFixed(2).replace(/\.00$/, "");
 }
@@ -444,12 +428,13 @@ function readLocalValue(key) {
 
 function writeLocalValue(key, value) {
   if (typeof window === "undefined") {
-    return;
+    return false;
   }
   try {
     window.localStorage.setItem(key, value);
+    return true;
   } catch {
-    // The app still works if browser storage is blocked; presets just become session-only.
+    return false;
   }
 }
 
@@ -549,10 +534,7 @@ function loadPresets(rawValue) {
   }
 
   try {
-    const parsed = JSON.parse(rawValue);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
+    const parsed = readPresetRecords(rawValue);
 
     return parsed
       .filter(
@@ -605,7 +587,7 @@ function readStoredPresets() {
 
 function writeStoredPresets(presets) {
   const value = JSON.stringify(presets);
-  writeLocalValue(PRESETS_KEY, value);
+  return writeLocalValue(PRESETS_KEY, value);
 }
 
 function parsePresetBackup(rawValue) {
@@ -685,33 +667,46 @@ function fieldHasGrowthValue(form, field) {
   return true;
 }
 
-function calculateBotanicalGrowth(form, calculations) {
-  const visibleHourFields = LINE_HOUR_FIELDS.slice(0, Math.max(1, calculations.lineRows.length));
-  const inputFields = [...GROWTH_REQUIRED_FIELDS, ...GROWTH_OPTIONAL_FIELDS];
-  const completedInputUnits = inputFields.reduce(
+function calculateBotanicalGrowth(form, calculations, defaults) {
+  const completedInputUnits = GROWTH_REQUIRED_FIELDS.reduce(
     (sum, field) => sum + (fieldHasGrowthValue(form, field) ? 1 : 0),
     0,
   );
-  const completedHourUnits = visibleHourFields.reduce(
-    (sum, field) => sum + (parseNonNegative(form[field]) > 0 ? 1 : 0),
-    0,
-  );
+  const validDates = ["invoiceDate", "periodStart", "periodEnd"].every((field) => fieldHasGrowthValue(form, field))
+    && form.periodEnd >= form.periodStart;
+  const completedHourUnits = calculations.totalHours > 0 && validDates ? 1 : 0;
+  const filledWeeks = LINE_HOUR_FIELDS.slice(0, calculations.lineRows.length)
+    .filter((field) => parseNonNegative(form[field]) > 0).length;
+  const detailUnits = GROWTH_DETAIL_FIELDS.filter((field) => fieldHasGrowthValue(form, field)).length
+    + GROWTH_CONTROL_FIELDS.filter((field) => form[field] !== defaults[field] && fieldHasGrowthValue(form, field)).length
+    + Math.max(0, filledWeeks - 1);
+  const requiredUnits = completedInputUnits + completedHourUnits;
 
   return {
-    completedUnits: completedInputUnits + completedHourUnits,
-    totalUnits: inputFields.length + visibleHourFields.length,
+    completedUnits: Math.min(requiredUnits === 6 ? 6 : 5.8, requiredUnits + detailUnits * 0.18),
+    totalUnits: GROWTH_REQUIRED_FIELDS.length + 1,
+    detailUnits,
+    totalDetailUnits: GROWTH_DETAIL_FIELDS.length + GROWTH_CONTROL_FIELDS.length + LINE_HOUR_FIELDS.length - 1,
   };
 }
 
 function FormField({ label, required, error, children, className = "" }) {
+  const errorId = useId();
+  const control = isValidElement(children) && children.type === "input"
+    ? cloneElement(children, {
+        "aria-required": required || undefined,
+        "aria-invalid": error ? true : undefined,
+        "aria-describedby": error ? errorId : undefined,
+      })
+    : children;
   return (
     <label className={`field ${className}`.trim()}>
       <span className="field-label">
         {label}
         {required ? <em>*</em> : null}
       </span>
-      {children}
-      {error ? <span className="field-error">{error}</span> : null}
+      {control}
+      {error ? <span id={errorId} className="field-error">{error}</span> : null}
     </label>
   );
 }
@@ -879,7 +874,7 @@ function CompletionProgress({ steps, growth }) {
   return (
     <section className="completion-progress" aria-label="Completion progress">
       <div className="completion-visual" aria-hidden="true">
-        <BotanicalPlantProgress completedUnits={growth.completedUnits} totalUnits={growth.totalUnits} />
+        <BotanicalPlantProgress {...growth} />
       </div>
       <span className="sr-only">{progressLabel}</span>
     </section>
@@ -906,7 +901,9 @@ function isTouchNavigationExcluded(target) {
 
 export default function App() {
   const [form, setForm] = useState(() => createClearedForm());
+  const growthDefaultsRef = useRef(form);
   const [presets, setPresets] = useState(() => readStoredPresets());
+  const initialPresetsRef = useRef(presets);
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [touched, setTouched] = useState({});
   const [toast, setToast] = useState("");
@@ -930,6 +927,7 @@ export default function App() {
   const presetImportInputRef = useRef(null);
   const presetDropdownRef = useRef(null);
   const presetDialogInputRef = useRef(null);
+  const presetDialogRef = useRef(null);
   const stepTabRefs = useRef([]);
   const stepPaneRef = useRef(null);
   const workflowTouchStartRef = useRef(null);
@@ -943,7 +941,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    writeStoredPresets(presets);
+    if (presets === initialPresetsRef.current) {
+      return;
+    }
+    if (!writeStoredPresets(presets)) {
+      showToast("Could not save preset changes in this browser. Export a backup to keep saved presets.", 7000);
+    }
   }, [presets]);
 
   useEffect(() => {
@@ -1023,8 +1026,10 @@ export default function App() {
       return undefined;
     }
 
-    requestAnimationFrame(() => {
-      presetDialogInputRef.current?.focus();
+    const returnFocus = document.activeElement;
+    const frame = requestAnimationFrame(() => {
+      const firstControl = presetDialogRef.current?.querySelector("input, button");
+      firstControl?.focus();
       presetDialogInputRef.current?.select();
     });
 
@@ -1032,11 +1037,28 @@ export default function App() {
       if (event.key === "Escape") {
         setIsPresetDialogOpen(false);
         setIsPresetDeleteDialogOpen(false);
+      } else if (event.key === "Tab") {
+        const controls = getKeyboardFocusableElements(presetDialogRef.current);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
       }
     }
 
     document.addEventListener("keydown", handlePresetDialogKeydown);
-    return () => document.removeEventListener("keydown", handlePresetDialogKeydown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", handlePresetDialogKeydown);
+      if (returnFocus instanceof HTMLElement && returnFocus.isConnected) {
+        returnFocus.focus();
+      }
+    };
   }, [isPresetDialogOpen, isPresetDeleteDialogOpen]);
 
   const errors = useMemo(() => validateForm(form), [form]);
@@ -1082,7 +1104,7 @@ export default function App() {
   const activeCurrency = normalizeCurrency(form.currency);
   const invoiceIncomplete = Object.keys(errors).length > 0 || calculations.totalHours <= 0;
   const botanicalGrowth = useMemo(
-    () => calculateBotanicalGrowth(form, calculations),
+    () => calculateBotanicalGrowth(form, calculations, growthDefaultsRef.current),
     [calculations, form],
   );
 
@@ -1114,14 +1136,14 @@ export default function App() {
   );
   const presetModalOpen = isPresetDialogOpen || isPresetDeleteDialogOpen;
 
-  function showToast(message) {
+  function showToast(message, duration = 2600) {
     setToast(message);
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
     }
     toastTimerRef.current = setTimeout(() => {
       setToast("");
-    }, 2600);
+    }, duration);
   }
 
   function updateField(field, value) {
@@ -1876,7 +1898,7 @@ export default function App() {
   return (
     <>
       <div className={`app-shell ${presetModalOpen ? "dialog-open" : ""}`}>
-      <div className="app-content" aria-hidden={presetModalOpen ? "true" : undefined}>
+      <div className="app-content" inert={presetModalOpen ? "" : undefined} aria-hidden={presetModalOpen ? "true" : undefined}>
         <header className="topbar">
           <div className="topbar-main">
             <div className="brand-copy">
@@ -2282,6 +2304,7 @@ export default function App() {
                 <div
                   key={`split-hours-${clockifyImportPulse}`}
                   className={`field-grid five-col split-hours-grid ${clockifyImportPulse ? "imported" : ""}`}
+                  style={{ "--week-count": Math.max(1, calculations.lineRows.length) }}
                 >
                   {calculations.lineRows.map((row, index) => (
                     <FormField key={row.rowKey} label={row.compactRangeLabel} className="split-hour-field">
@@ -2301,32 +2324,34 @@ export default function App() {
                 {!calculations.lineRows.length ? (
                   <p className="field-error">Invalid period.</p>
                 ) : null}
+                <div className="clockify-import-grid" style={{ "--week-count": Math.max(1, calculations.lineRows.length) }}>
+                  <div className="clockify-import-row">
+                    <div className="clockify-import-copy">
+                      <img className="clockify-wordmark" src={clockifyLogoUrl} alt="Clockify" />
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      className="sr-only"
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleClockifyImport}
+                      data-key-nav-skip="true"
+                    />
+                    <button
+                      type="button"
+                      className="secondary-button import-button"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Upload size={15} />
+                      Import
+                    </button>
+                  </div>
+                </div>
                 {clockifyImportStatus ? (
                   <div className={`import-status ${clockifyImportStatus.type}`}>
                     {clockifyImportStatus.message}
                   </div>
                 ) : null}
-                <div className="clockify-import-row">
-                  <div className="clockify-import-copy">
-                    <img className="clockify-wordmark" src={clockifyLogoUrl} alt="Clockify" />
-                  </div>
-                  <input
-                    ref={fileInputRef}
-                    className="sr-only"
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={handleClockifyImport}
-                    data-key-nav-skip="true"
-                  />
-                  <button
-                    type="button"
-                    className="secondary-button import-button"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload size={15} />
-                    Import
-                  </button>
-                </div>
               </div>
             ) : null}
           </div>
@@ -2353,8 +2378,8 @@ export default function App() {
                   <h3>{form.businessName || "Your business"}</h3>
                   <p>{form.businessEmail || "-"}</p>
                   {form.businessPhone ? <p>{form.businessPhone}</p> : null}
-                  <p>{form.businessAddress || "Business address"}</p>
-                  <p>{form.businessPostcode || "Postcode"}</p>
+                {form.businessAddress ? <p>{form.businessAddress}</p> : null}
+                {form.businessPostcode ? <p>{form.businessPostcode}</p> : null}
                 </div>
               </div>
               <div className="invoice-meta">
@@ -2381,8 +2406,8 @@ export default function App() {
               <p className="client-name">{form.clientName || "Client name"}</p>
               <p>{form.clientEmail || "-"}</p>
               {form.clientPhone ? <p>{form.clientPhone}</p> : null}
-              <p>{form.clientAddress || "Client address"}</p>
-              <p>{form.clientPostcode || "Postcode"}</p>
+              {form.clientAddress ? <p>{form.clientAddress}</p> : null}
+              {form.clientPostcode ? <p>{form.clientPostcode}</p> : null}
             </section>
 
             <section className="line-items">
@@ -2458,6 +2483,7 @@ export default function App() {
                 className={`primary-button export-button ${isPdfExporting ? "is-exporting" : ""}`}
                 onClick={downloadPdf}
                 disabled={isPdfExporting}
+                aria-busy={isPdfExporting}
                 title={pdfButtonTitle}
               >
                 <Download size={15} />
@@ -2480,6 +2506,7 @@ export default function App() {
       {isPresetDialogOpen ? (
         <div className="dialog-backdrop" role="presentation" onMouseDown={() => setIsPresetDialogOpen(false)}>
           <form
+            ref={presetDialogRef}
             className="preset-dialog"
             role="dialog"
             aria-modal="true"
@@ -2521,6 +2548,7 @@ export default function App() {
       {isPresetDeleteDialogOpen ? (
         <div className="dialog-backdrop" role="presentation" onMouseDown={() => setIsPresetDeleteDialogOpen(false)}>
           <div
+            ref={presetDialogRef}
             className="preset-dialog"
             role="dialog"
             aria-modal="true"
